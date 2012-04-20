@@ -3,8 +3,6 @@
 
 #include "JoystickWrapper.h"
 #include "Robot.h"
-#include "Display.h"
-#include "Singleton.h"
 
 #define CALL_OBJECT_FUNC(member) (object->*(member))
 
@@ -33,7 +31,7 @@ public:
 
 	~JoystickCallback()
 	{
-		Singleton<Display>::GetInstance().PrintfLine(1,"Woe is the Joystick Callback!");
+		printf("Woe is the Joystick Callback!\n");
 
 		delete [] this->downCallback;
 		delete [] this->heldCallback;
@@ -75,19 +73,22 @@ public:
 		// deal with the buttons
 		for( int i = 0; i < buttonCount; i++ )
 		{
-			bool state = this->buttonStates[i];
+			bool previousState = this->buttonStates[i];
 			this->buttonStates[i] = jwrapper->GetJoystick()->GetRawButton(i);
-			if( state != this->buttonStates[i] )
+			if( previousState != this->buttonStates[i] )
 			{
-				if( state ) {
+				if( previousState ) // was down and is now up
+                {
 					if(upCallback[i] == NULL) continue;
 					CALL_OBJECT_FUNC(upCallback[i])();
-				} else {
+				} 
+                else // was up now is down
+                {
 					if(downCallback[i] == NULL) continue;
 					CALL_OBJECT_FUNC(downCallback[i])();
 				}
 			}
-			else if( state == 1 && this->buttonStates[i] == 1 )
+			else if( previousState == 1 && this->buttonStates[i] == 1 )
 			{
 				if(heldCallback[i] == NULL) continue;
 				CALL_OBJECT_FUNC(heldCallback[i])();

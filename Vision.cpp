@@ -1,23 +1,34 @@
 #include <WPILib.h>
 #include "nivision.h"
 #include <cmath>
+#include "Math.h"
+#include <stdio.h>
 
 #include "Constants.h"
-#include "Display.h"
+#include "DisplayWriter.h"
 #include "Singleton.h"
 #include "Vision.h"
+#include <fstream>
 
-AxisCamera *Vision::cam = NULL;
-VisionSpecifics *Vision::engine = NULL;
+AxisCamera *Vision::cam= NULL;
+VisionSpecifics *Vision::engine= NULL;
 int Vision::bestTargetCount = 0;
-TargetReport Vision::bestTargets[] = {0, 0, 0, 0};
+vector<TargetReport> Vision::bestTargets = vector<TargetReport>();
 
-static bool compareTargetReportY(TargetReport a, TargetReport b) { return (a.y < b.y); }
-static bool compareTargetReportX(TargetReport a, TargetReport b) { return (a.x < b.x); }
+void Vision::reservePrimaryLines() { primaryDisplay.reserve(1); }
+void Vision::reserveSecondaryLines() { secondaryDisplay.reserve(4); }
 
+
+/**
+ * Get a distance given a known height of an object in an image.
+ * 
+ * \param realHeight the actual height of the object.
+ * \param imageHeight the height of the object in pixels.
+ * \return the distance to the object.
+ */
 static double GetDistanceFromHeight(double realHeight, double imageHeight)
 {
-	return (realHeight / imageHeight) * CAMERA_FOCAL_LENGTH;
+	return (2*240.0/2.0)/tan(degToRad(17.0965405)) / (imageHeight * 2.0 / realHeight);
 }
 
 Vision::Vision(VisionSpecifics *backend)
@@ -47,132 +58,367 @@ void Vision::stop()
 
 void Vision::loop()
 {
-	while(true)
+	while (true)
 	{
 		HSLImage* cap = new HSLImage;
 		cam->GetImage(cap);
 		engine->GetBestTargets(cap, bestTargets, bestTargetCount);
-//		Singleton<Display>::GetInstance().PrintfLine(1, "Vis:(%f,%f)", bestTargets[0].normalized_x, bestTargets[0].normalized_y);
-//		Singleton<Display>::GetInstance().PrintfLine(2, "#:%d,Dist:%f", bestTargetCount, bestTargets[0].distance);
+		VISION.primaryDisplay.printfLine(0, "Vis #:%d Dist:%f H:%f", bestTargetCount, bestTargets[0].distance, bestTargets[0].height);
 		delete cap;
 		Wait(0.01);
 	}
 }
 
-bool* Vision::GetTargetCase(TargetReport* targets, int targetCount)
+bool Vision::isHorizontallyAligned(TargetReport &targets1, TargetReport &targets2)
 {
-	vector <TargetReport> ordered;
-	for (int i = 0; i < targetCount; i++) ordered.push_back(targets[i]);
-	
-	sort(ordered.begin(), ordered.end(), compareTargetReportY);
-	bool *ret = new bool[4];
-	ret[0] = 0; ret[1] = 0; ret[2] = 0; ret[3] = 0;
-	double last_dif = 0;
-	double middle_y = 0;
-	double middle_x = 0;
-	for (unsigned int i = 1; i < ordered.size(); i++) {
-		last_dif = ordered[i].y - ordered[i-1].y;
-		if (last_dif <= ordered[i].height * .2 && last_dif >= 0-ordered[i].height * .2) {
-			ret[1] = 1;
-			ret[2] = 1;
-			if (ordered[i].x < ordered[i-1].x) {
-				targets[1] = ordered[i];
-				targets[2] = ordered[i-1];
-			} else {
-				targets[2] = ordered[i];
-				targets[1] = ordered[i-1];
-			}
-			middle_y = ordered[i].y;
-		}
-	}
-	sort(ordered.begin(), ordered.end(), compareTargetReportX);
-	for (unsigned int i = 1; i < ordered.size(); i++) {
-		last_dif = ordered[i].x - ordered[i-1].x;
-		if (last_dif <= ordered[i].width * .1 && last_dif >= 0-ordered[i].width * .1) {
-			ret[0] = 1;
-			ret[3] = 1;
-			if (ordered[i].y < ordered[i-1].y) {
-				targets[0] = ordered[i];
-				targets[3] = ordered[i-1];
-			} else {
-				targets[3] = ordered[i];
-				targets[0] = ordered[i-1];
-			}
-			middle_x = ordered[i].x;
-		}
-	}
-	
-	for (unsigned int i = 0; i < ordered.size(); i++) {
-		if (middle_y != 0) {
-			if (ordered[i].y < middle_y
-			 && ordered[i].x >= (targets[1].x + targets[2].x) / 2 - ordered[i].width * .1
-			 && ordered[i].x <= (targets[1].x + targets[2].x) / 2 + ordered[i].width * .1){
-				ret[0] = 1;
-				targets[0] = ordered[i];
-			}
-			if (ordered[i].y > middle_y
-			 && ordered[i].x >= (targets[1].x + targets[2].x) / 2 - ordered[i].width * .1
-			 && ordered[i].x <= (targets[1].x + targets[2].x) / 2 + ordered[i].width * .1){
-				ret[3] = 1;
-				targets[3] = ordered[i];
-			}
-		}
-		if (middle_x != 0) {
-			if (ordered[i].x > middle_x 
-			 && ordered[i].y >= (targets[0].y + targets[3].y) / 2 - ordered[i].height * .2
-			 && ordered[i].y <= (targets[0].y + targets[3].y) / 2 + ordered[i].height * .2 ){
-				ret[2] = 1;
-				targets[2] = ordered[i];
-			}
-			if (ordered[i].x < middle_x 
-			 && ordered[i].y >= (targets[0].y + targets[3].y) / 2 - ordered[i].height * .2
-			 && ordered[i].y <= (targets[0].y + targets[3].y) / 2 + ordered[i].height * .2 ){
-				ret[1] = 1;
-				targets[1] = ordered[i];
-			}
-		}
-	}
-	return ret;
+	return (fabs(targets1.centerX - targets2.centerX) <= (targets1.width + targets2.width) / 2 * 0.4);
 }
 
-void Vision::FindTarget(double& offset, double& distance, int& targetLevel)
+bool Vision::isVerticallyAligned(TargetReport &targets1, TargetReport &targets2)
 {
-	targetLevel = 0;
+	return (fabs(targets1.centerY - targets2.centerY) <= (targets1.height + targets2.height) / 2 * 0.75);
+}
+
+bool Vision::isBottomTarget( TargetReport &target )
+{
+	return (target.normalizedY > 0.0);
+}
+
+void Vision::GetTargetCase(vector <TargetReport> &targets, int numtargets, int& top, int& left, int& right, int& bottom)
+{
+	top = -1;
+	left = -1;
+	right = -1;
+	bottom = -1;
+
+	
+	// one target
+	if( numtargets == 1 )
+	{
+		if ( isBottomTarget( targets[0] ))
+			bottom = 0;
+		return;
+	}
+
+	// two targets
+	if( numtargets == 2 )
+	{
+		// top and bottom?
+		if( isHorizontallyAligned( targets[0], targets[1] ))
+		{
+			if( isBottomTarget( targets[0] ))
+			{
+				bottom = 0;
+				top = 1;
+			}
+			else
+			{
+				top = 0;
+				bottom = 1;
+			}
+			return;
+		}
+
+		// left and right?
+		if( isVerticallyAligned( targets[0], targets[1] ))
+		{
+			if( targets[0].centerX < targets[1].centerX )
+			{
+				left = 0;
+				right = 1;
+			}
+			else
+			{
+				right = 0;
+				left = 1;
+			}
+			return;
+		}
+
+		// diagonal targets
+		// Are either of them the bottom target?
+		if( isBottomTarget( targets[0] ) || isBottomTarget( targets[1] ))
+		{
+			if( isBottomTarget( targets[0] ))
+			{
+				bottom = 0;
+				// bottom/right?
+				if (targets[1].centerX > targets[0].centerX )
+					right = 1;
+				else
+					left = 1;
+				return;
+			}
+			else
+			{
+				bottom = 1;
+				// bottom/right?
+				if (targets[0].centerX > targets[1].centerX )
+					right = 0;
+				else
+					left = 0;
+				return;
+			}
+		}
+		else
+		{
+			// first one top?
+			if( targets[0].centerY > targets[1].centerY )
+			{
+				top = 1;
+				// top/right?
+				if (targets[1].centerX < targets[0].centerX )
+					right = 0;
+				else
+					left = 0;
+				return;
+			}
+			else
+			{
+				top = 0;
+				// bottom/right?
+				if (targets[0].centerX < targets[1].centerX )
+					right = 1;
+				else
+					left = 1;
+				return;
+			}
+		}
+	}
+	
+	TargetPair hor;
+	hor.set = false;
+	hor.a = -1;
+	hor.b = -1;
+	TargetPair ver;
+	ver.set = false;
+	ver.a = -1;
+	ver.b = -1;
+	bool viable = true;
+
+	for (int a = 0; a < numtargets-1; a++)
+	{
+		for (int b = a+1; b < numtargets; b++)
+		{
+			// Check for X Similarities
+			if (isHorizontallyAligned(targets[a], targets[b]))
+			{
+				if (ver.set == false)
+				{
+					ver.a = a;
+					ver.b = b;
+					ver.set = true;
+				}
+				else
+				{
+					viable = false; // Duplicate pairs of similar X Values
+				}
+			}
+			// Check for Y Similarities
+			if (isVerticallyAligned(targets[a], targets[b]))
+			{
+				if (hor.set == false)
+				{
+					hor.a = a;
+					hor.b = b;
+					hor.set = true;
+				}
+				else
+				{
+					viable = false; // Duplicate pairs of similar Y Values
+				}
+			}
+		}
+	}
+	// Left and Right targets - Determined by y values
+	if (hor.set == true && viable == true)
+	{
+		if (targets[hor.a].centerX < targets[hor.b].centerX)
+		{
+			left = hor.a;
+			right = hor.b;
+		}
+		else
+		{
+			right = hor.a;
+			left = hor.b;
+		}
+		for (int i = 0; i < numtargets; i++)
+		{
+			if (i == hor.a || i == hor.b)
+				continue;
+			if (targets[i].centerY < targets[hor.a].centerY)
+			{
+				if (fabs(targets[i].centerX - (targets[hor.a].centerX + targets[hor.b].centerX) / 2) <= targets[i].width * 0.4)
+				{
+					top = i;
+				}
+			}
+			else if (targets[i].centerY > targets[hor.a].centerY)
+			{
+				if (fabs(targets[i].centerX - (targets[hor.a].centerX + targets[hor.b].centerX) / 2) <= targets[i].width * 0.4)
+				{
+					bottom = i;
+				}
+			}
+		}
+	}
+	// Top and Bottom targets - Determined by x values
+	if (ver.set == true && viable == true)
+	{
+		if (targets[ver.a].centerY < targets[ver.b].centerY)
+		{
+			top = ver.a;
+			bottom = ver.b;
+		}
+		else
+		{
+			bottom = ver.a;
+			top = ver.b;
+		}
+		for (int i = 0; i < numtargets; i++)
+		{
+			if (i == ver.a || i == ver.b)
+				continue;
+			if (targets[i].centerX < targets[ver.a].centerX)
+			{
+				if (fabs(targets[i].centerY - (targets[ver.a].centerY + targets[ver.b].centerY) / 2) <= targets[i].height)
+				{
+					left = i;
+				}
+			}
+			else if (targets[i].centerX > targets[ver.a].centerX)
+			{
+				if (fabs(targets[i].centerY - (targets[ver.a].centerY + targets[ver.b].centerY) / 2) <= targets[i].height)
+				{
+					right = i;
+				}
+			}
+		}
+	}
+	/*
+	if (top == -1 && (left == -1 || right == -1))
+	{
+		for (int a = 0; a < numtargets-1; a++)
+		{
+			for (int b = a+1; b < numtargets; b++)
+			{
+				// Checking for top target
+				if (targets[a].normalizedY < 0)
+				{
+					// Checking for a center target (a is top, b is center)
+					if (targets[b].centerY > targets[a].centerY)
+					{
+						if (fabs((targets[b].x + targets[b].width) - targets[a].x) <= targets[a].width * 0.2)
+						{
+							if (targets[b].x < targets[a].x)
+							{
+								top = a;
+								left = b;
+							}
+							else
+							{
+								top = a;
+								right = b;
+							}
+						}
+					}
+				}
+				else if (targets[b].normalizedY < 0)
+				{
+					// Checking for a center target (b is top, a is center)
+					if (targets[a].centerY > targets[b].centerY)
+					{
+						if (fabs((targets[b].x + targets[b].width) - targets[a].x) <= targets[a].width * 0.2)
+						{
+							if (targets[b].x < targets[a].x)
+							{
+								top = b;
+								left = a;
+							}
+							else
+							{
+								top = b;
+								right = a;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	*/
+}
+
+void Vision::FindTarget(double& offset, double& distance)
+{
 	distance = 0.0;
 	offset = 0.0;
 
-	if( bestTargetCount == 0 )
-		return;
-	bool* targetCase = GetTargetCase(bestTargets, bestTargetCount);
+	/*
+	TargetReport tmp = GetBestTarget();
+	if (tmp.normalizedY > 0.0)
+	{
+		distance = tmp.distance;
+		offset = tmp.normalizedX;
+	}
+	*/
 
-	//Handle target cases
-	if( targetCase[TOP_TARGET] && targetCase[BOTTOM_TARGET] )
+	if (bestTargetCount == 0)
+		return;
+	int targetCase[4] = { -1, -1, -1, -1 };
+	GetTargetCase(bestTargets, bestTargetCount, targetCase[TOP_TARGET], targetCase[LEFT_TARGET], targetCase[RIGHT_TARGET], targetCase[BOTTOM_TARGET]);
+	
+	secondaryDisplay.printfLine(0, "Top Target: %d", targetCase[TOP_TARGET]);
+	secondaryDisplay.printfLine(1, "Left Target: %d", targetCase[LEFT_TARGET]);
+	secondaryDisplay.printfLine(2, "Right Target: %d", targetCase[RIGHT_TARGET]);
+	secondaryDisplay.printfLine(3, "Bottom Target: %d", targetCase[BOTTOM_TARGET]);
+	// Handle target cases
+
+	if (targetCase[TOP_TARGET] >= 0 && targetCase[BOTTOM_TARGET] >= 0)
 	{
 		//Top / Bottom (best case scenario)
-		offset = bestTargets[0].normalized_x;
-		targetLevel = 3;
-		
-		double realHeight = BASKET_3_ELEVATION - BASKET_1_ELEVATION;
-		distance = GetDistanceFromHeight(realHeight, bestTargets[0].normalizedHeight);
+		offset = bestTargets[TOP_TARGET].normalizedX;
+
+		double realHeight = BASKET_TOP_ELEVATION - BASKET_BOTTOM_ELEVATION;
+		distance = GetDistanceFromHeight(realHeight, fabs(bestTargets[targetCase[BOTTOM_TARGET]].centerY - bestTargets[targetCase[TOP_TARGET]].centerY));
 	}
-	else if( targetCase[TOP_TARGET] && (targetCase[LEFT_TARGET] || targetCase[RIGHT_TARGET]) )
+	else if (targetCase[TOP_TARGET] >= 0 && (targetCase[LEFT_TARGET] >= 0 || targetCase[RIGHT_TARGET] >= 0))
 	{
 		//One of the top diagonals
-		offset = bestTargets[0].normalized_x;
-		targetLevel = 3;
-		
-		double realHeight = BASKET_3_ELEVATION - BASKET_2_ELEVATION;
-		distance = GetDistanceFromHeight(realHeight, bestTargets[0].normalizedHeight);
+		offset = bestTargets[targetCase[TOP_TARGET]].normalizedX;
+
+		double realHeight = BASKET_TOP_ELEVATION - BASKET_MIDDLE_ELEVATION;
+		if (targetCase[LEFT_TARGET] >= 0)
+		{
+			distance = GetDistanceFromHeight(realHeight, fabs(bestTargets[targetCase[LEFT_TARGET]].centerY - bestTargets[targetCase[TOP_TARGET]].centerY));
+		}
+		else if (targetCase[RIGHT_TARGET] >= 0)
+		{
+			distance = GetDistanceFromHeight(realHeight, fabs(bestTargets[targetCase[RIGHT_TARGET]].centerY - bestTargets[targetCase[TOP_TARGET]].centerY));
+		}
 	}
-	else if( targetCase[BOTTOM_TARGET] && (targetCase[LEFT_TARGET] || targetCase[RIGHT_TARGET]) )
+	else if (targetCase[BOTTOM_TARGET] >= 0 && (targetCase[LEFT_TARGET] >= 0 || targetCase[RIGHT_TARGET] >= 0))
 	{
 		//One of the bottom diagonals
-		offset = bestTargets[3].normalized_x;
-		targetLevel = 1;
-		
-		double realHeight = BASKET_2_ELEVATION - BASKET_1_ELEVATION;
-		distance = GetDistanceFromHeight(realHeight, bestTargets[3].normalizedHeight);
+		offset = bestTargets[targetCase[BOTTOM_TARGET]].normalizedX;
+
+		double realHeight = BASKET_MIDDLE_ELEVATION - BASKET_BOTTOM_ELEVATION;
+		if (targetCase[LEFT_TARGET] >= 0)
+		{
+			distance = GetDistanceFromHeight(realHeight, fabs(bestTargets[targetCase[BOTTOM_TARGET]].centerY - bestTargets[targetCase[LEFT_TARGET]].centerY));
+		}
+		else if (targetCase[RIGHT_TARGET] >= 0)
+		{
+			distance = GetDistanceFromHeight(realHeight, fabs(bestTargets[targetCase[BOTTOM_TARGET]].centerY - bestTargets[targetCase[RIGHT_TARGET]].centerY));
+		}
+
 	}
-	
-	delete [] targetCase;
+	else if( targetCase[LEFT_TARGET] >= 0 && targetCase[RIGHT_TARGET] >= 0 )
+	{
+		//Both side targets
+		offset = (bestTargets[targetCase[RIGHT_TARGET]].normalizedX + bestTargets[targetCase[LEFT_TARGET]].normalizedX) / 2.0;
+		distance = (bestTargets[targetCase[LEFT_TARGET]].distance + bestTargets[targetCase[RIGHT_TARGET]].distance) / 2.0;
+	}
+
 }

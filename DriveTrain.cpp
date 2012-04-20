@@ -1,11 +1,15 @@
 #include "WPILib.h"
 
-#include "Display.h"
+#include "DisplayWriter.h"
 #include "DriveTrain.h"
 #include "Math.h"
 #include "Logger.h"
 #include "Singleton.h"
 #include <cmath>
+
+void DriveTrain::reservePrimaryLines() { primaryDisplay.reserve(0); }
+void DriveTrain::reserveSecondaryLines() { secondaryDisplay.reserve(0); }
+
 
 DriveTrain::DriveTrain()
 {
@@ -59,4 +63,12 @@ DriveType DriveTrain::CurrentDrive()
 void DriveTrain::ChangeDrive(DriveType type)
 {
 	this->type = type;
+}
+
+void DriveTrain::SetLeft(double v) {
+	this->left->Set(v);
+}
+
+void DriveTrain::SetRight(double v) {
+	this->right->Set(v);
 }

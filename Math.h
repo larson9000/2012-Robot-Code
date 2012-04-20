@@ -9,6 +9,8 @@
 
 static const double PI = 4.0 * std::atan(1.0); /**< Pi. */
 
+#define SIGN(x) (((x) < 0) ? -1 : 1)
+
 /**
  * Convert degrees to radians.
  * 
@@ -35,5 +37,9 @@ double radToDeg(double radians);
  * \param ry the rotated y coordinate.
  */
 void rotate(double x, double y, double angle, double* rx, double* ry);
+
+double cubicFilter(double x);
+
+double tanFilter(double x);
 
 #endif // MATH_H

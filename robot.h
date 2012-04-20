@@ -39,9 +39,30 @@ private:
 	void RampUp();
 	void CollectorEject();
 	void RampOff();
-	void ShootBasket();
+	void ShootBasket(int shots);
+	void ShootBasketTeleoperated();
 	void MoveTurret();
 	void TurretOff();
+	void HalfSpeedOn();
+	void QuarterSpeedOn();
+	void NormalSpeed();
+	void RatioDown();
+	void RatioUp();
+	void CollectorIncBall();
+	void CollectorDecBall();
+
+	double shotDirectionModifier();
+	double shotDistanceModifier();
+	void ShotXInc();
+	void ShotXDec();
+	void ShotZInc();
+	void ShotZDec();
+
+	void reservePrimaryLines();
+	void reserveSecondaryLines();
+	
+	DisplayWriter primaryDisplay;
+	DisplayWriter secondaryDisplay;
 	
 	AccelPID_Wrapper*			balanceAccelerometer;
 	Vision*						vision;
@@ -50,6 +71,9 @@ private:
 	JoystickCallback<Robot>*	joystickCallbackHandler;
 	JoystickWrapper*			joystick1;
 	JoystickWrapper*			joystick2;
+	double 						speedMultiplier;
+	int							shotModifierX;
+	int							shotModifierZ;
 };
 
 #endif // ROBOT_H

@@ -25,12 +25,12 @@ public:
 	}
 	
 	/**
-	 * Get the encapsulated instance of the class. If one has not been created already, it will be done here.
+	 * Get the encapsulated instance of the class.
 	 * 
 	 * \return the encapsulated instance of the class.
 	 */
 	static T& GetInstance()
-	{	
+	{
 		return *instance;
 	}
 	

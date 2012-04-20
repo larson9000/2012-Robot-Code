@@ -4,6 +4,7 @@
 #include <WPILib.h>
 #include "Constants.h"
 #include "SharpIR.h"
+#include "DisplayWriter.h"
 
 enum CollectorState {
 	OFF,
@@ -34,7 +35,15 @@ public:
 	void Start();
 	static void SetBallCount( int balls );
 	void PrepareToShoot();
+	void ChangeBallCountBy(int c);
+	int GetBalls();
+
+	void reservePrimaryLines();
+	void reserveSecondaryLines();
 	
+	DisplayWriter primaryDisplay;
+	DisplayWriter secondaryDisplay;
+
 private:
 	static unsigned balls;
 	static Victor *grabber;
@@ -44,9 +53,10 @@ private:
 	static SharpIR *middleIR;
 	static SharpIR *topIR;
 	Task *collectorTask;
-	Relay *strike1;
+	//Relay *strike1;
 	Relay *strike2;
 	static CollectorState collectorState;
+	static Timer* prepTimer;
 	static void ThreadLoop();
 	static void RejectBall();
 

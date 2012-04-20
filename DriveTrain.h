@@ -37,8 +37,16 @@ public:
 	DriveType type;
 	DriveType CurrentDrive();
 	void ChangeDrive(DriveType type);
+	void SetLeft(double v);
+	void SetRight(double v);
+	
+	void reservePrimaryLines();
+	void reserveSecondaryLines();
 	
 private:
+	DisplayWriter primaryDisplay;
+	DisplayWriter secondaryDisplay;
+
 	Jaguar* left;
 	Jaguar* right;
 	RobotDrive* roboDrive;

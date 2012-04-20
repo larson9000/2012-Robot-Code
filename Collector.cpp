@@ -1,7 +1,8 @@
 #include <WPILib.h>
 #include "Collector.h"
-#include "Display.h"
+#include "DisplayWriter.h"
 #include "Singleton.h"
+#include <cstdio>
 
 unsigned Collector::balls = 0;
 Victor *Collector::grabber = NULL;
@@ -11,8 +12,13 @@ SharpIR *Collector::frontMiddleIR = NULL;
 SharpIR *Collector::middleIR = NULL;
 SharpIR *Collector::topIR = NULL;
 CollectorState Collector::collectorState = OFF;
+Timer*	Collector::prepTimer = NULL;
 
-Collector::Collector( )
+void Collector::reservePrimaryLines() { primaryDisplay.reserve(1); }
+void Collector::reserveSecondaryLines() { secondaryDisplay.reserve(7); }
+
+
+Collector::Collector()
 {
 	grabber = new Victor(COLLECTOR_GRABBER_CHANNEL);
 	lifter = new Victor(COLLECTOR_LIFTER_CHANNEL);
@@ -21,9 +27,12 @@ Collector::Collector( )
 	middleIR = new SharpIR(1, IR_MIDDLE_CHANNEL, COLLECTOR_MIDDLE_SIGNAL_VOLTAGE, COLLECTOR_MIDDLE_SIGNAL_TOGGLE_COUNT );
 	topIR = new SharpIR(1, IR_TOP_CHANNEL , COLLECTOR_TOP_SIGNAL_VOLTAGE, COLLECTOR_TOP_SIGNAL_TOGGLE_COUNT );
 	collectorState = OFF;
-	collectorTask = new Task("2502Cl",(FUNCPTR)ThreadLoop);
-	strike1 = new Relay(RAMP_LEFT_SPIKE_RELAY);
+	prepTimer = new Timer();
+	
+	//strike1 = new Relay(RAMP_LEFT_SPIKE_RELAY);
 	strike2 = new Relay(RAMP_RIGHT_SPIKE_RELAY);
+	
+	collectorTask = new Task("2502Cl",(FUNCPTR)ThreadLoop);
 }
 
 Collector::~Collector()
@@ -37,8 +46,9 @@ Collector::~Collector()
 	delete frontMiddleIR;
 	delete middleIR;
 	delete topIR;
-	delete strike1;
+	//delete strike1;
 	delete strike2;
+	delete prepTimer;
 }
 
 bool Collector::Shoot()
@@ -71,6 +81,7 @@ bool Collector::Shoot()
 void Collector::PrepareToShoot()
 {
 	collectorState = PREPARE_TO_SHOOT;
+	prepTimer->Start();
 }
 
 void Collector::ManipulateRamp(RampState state)
@@ -81,26 +92,30 @@ void Collector::ManipulateRamp(RampState state)
 	{
 		grabber->Set(COLLECTOR_STOP);
 		lifter->Set(COLLECTOR_STOP);
+		/*
 		if ( counter % 3 == 0 )
 		{
+		*/
 			if (state == UP)
 			{
-				strike1->Set(Relay::kForward);
-				strike2->Set(Relay::kForward);
+				//strike1->Set(Relay::kForward);
+				strike2->Set(Relay::kReverse);
 			}
 			else if (state == DOWN)
 			{
-				strike1->Set(Relay::kReverse);
-				strike2->Set(Relay::kReverse);
+				//strike1->Set(Relay::kReverse);
+				strike2->Set(Relay::kForward);
 			}
-		}
+		//}
 		else
 		{
-			strike1->Set(Relay::kOff);
+			//strike1->Set(Relay::kOff);
 			strike2->Set(Relay::kOff);
 			collectorState = LOOKING_FOR_BALLS;
 		}
 	}
+	else
+		strike2->Set(Relay::kOff);
 }
 
 
@@ -144,15 +159,20 @@ void Collector::RejectBall()
 // Thread that runs continuously
 void Collector::ThreadLoop()
 {
-	Display& display = Singleton<Display>::GetInstance();
+	Timer stage1Timer;
+	int numStage2 = 0;
+	int numStage1 = 0;
+	int numLooking = 0;
+	int lastStage = 0;
 	while( true )
 	{
-		//display.PrintfLine(0, "TopIR:%f", topIR->GetVoltage());
-		display.PrintfLine(1, "Balls:%d", balls);
-		display.PrintfLine(2, "Stage:%d", (int)collectorState);
-		display.PrintfLine(3, "FrontIR:%f", frontIR->GetVoltage());
-		display.PrintfLine(4, "MiddleIR:%f", middleIR->GetVoltage());
-		display.PrintfLine(5, "FrMiddleIR:%f", frontMiddleIR->GetVoltage());
+		COLLECTOR.primaryDisplay.printfLine(0, "Balls:%d", balls);
+
+		COLLECTOR.secondaryDisplay.printfLine(0, "TopIR:%f", topIR->GetVoltage());
+		COLLECTOR.secondaryDisplay.printfLine(1, "Stage:%d", (int)collectorState);
+		COLLECTOR.secondaryDisplay.printfLine(2, "FrontIR:%f", frontIR->GetVoltage());
+		COLLECTOR.secondaryDisplay.printfLine(3, "FrMiddleIR:%f", frontMiddleIR->GetVoltage());
+		COLLECTOR.secondaryDisplay.printfLine(4, "MiddleIR:%f", middleIR->GetVoltage());
 		
 		switch( collectorState )
 		{
@@ -163,13 +183,18 @@ void Collector::ThreadLoop()
 			Wait( .01 );
 			break;
 		case LOOKING_FOR_BALLS:
+			grabber->Set(COLLECTOR_STOP);
+			lifter->Set(COLLECTOR_STOP);
 			// if we mount a sensor up front, we could turn on when we sense a ball if we have less than 2 balls
 			if( frontIR->Get() == BALL_VISIBLE || frontMiddleIR->Get() == BALL_VISIBLE)
 			{
 				if( balls < MAX_BALLS )
 				{
-					display.PrintfLine(6, "SWITCH:%f", frontIR->GetVoltage());
+					COLLECTOR.secondaryDisplay.printfLine(5, "SWITCH:%f", frontIR->GetVoltage());
+					stage1Timer.Reset();
+					stage1Timer.Start();
 					collectorState = STAGE1;
+					numLooking++;
 				}
 				else
 				{
@@ -182,14 +207,20 @@ void Collector::ThreadLoop()
 		case STAGE1:
 			if( balls < MAX_BALLS )
 			{
+				if( stage1Timer.HasPeriodPassed(4.0) )
+				{
+					collectorState = LOOKING_FOR_BALLS;
+					stage1Timer.Stop();
+					stage1Timer.Reset();
+					break;
+				}
 				grabber->Set(COLLECTOR_RUNFAST);
 				if( middleIR->Get() == BALL_VISIBLE ) // Does bottom IR sense Ball?
 				{
 					// probably want to run this one slowly because we want to stop as soon as the IR sensor no longer senses the ball
 					grabber->Set(COLLECTOR_RUNSLOW);
 					lifter->Set(COLLECTOR_RUNSLOW);
-					Wait( .5 ); // enough time to transfer the ball beyond the pully
-					grabber->Set(COLLECTOR_STOP);
+					numStage1++;
 					collectorState = STAGE2;
 				}
 			}
@@ -198,6 +229,8 @@ void Collector::ThreadLoop()
 				// Already have enough balls, kick out any balls in the way and go back to looking which will eject any new balls that appear
 				collectorState = LOOKING_FOR_BALLS;
 				RejectBall();
+				stage1Timer.Stop();
+				stage1Timer.Reset();
 			}
 			break;
 		case STAGE2:
@@ -207,6 +240,9 @@ void Collector::ThreadLoop()
 				// the middle sensor no longer senses a ball? time to stop and wait for another ball to show up
 				if( middleIR->Get() == BALL_NOT_VISIBLE )
 				{
+					numStage2++;
+					Wait(.1);
+					grabber->Set(COLLECTOR_STOP);
 					lifter->Set(COLLECTOR_STOP);
 					collectorState = LOOKING_FOR_BALLS;
 					balls++;
@@ -222,23 +258,41 @@ void Collector::ThreadLoop()
 			break;
 		case PREPARE_TO_SHOOT:
 			// move backwards until top sensor does not sense a ball
-			if( topIR->Get() == BALL_NOT_VISIBLE )
+			if( middleIR->Get() == BALL_VISIBLE || prepTimer->HasPeriodPassed(0.2) )
 			{
 				collectorState = LOOKING_FOR_BALLS;
 				lifter->Set( COLLECTOR_STOP );
+				prepTimer->Stop();
+				prepTimer->Reset();
 				break;
 			}
 			lifter->Set( COLLECTOR_RUNSLOW_REVERSE );
 			break;
 
 		case SHOOTING:
-			lifter->Set( COLLECTOR_RUNSLOW );
-			Wait( 3 );  // TODO FIGURE OUT HOW LONG TO WAIT FOR ALL BALLS TO FLY
 			lifter->Set( COLLECTOR_RUNFAST );
-			Wait( .5 );
+			
+			//This ensures that only one ball can be shot at once
+			for( unsigned i = 0; i < 3000; ++i )
+			{
+				Wait(0.001);
+				if( topIR->Get() == BALL_VISIBLE )
+					break;
+			}
+			for( unsigned i = 0; i < 3000; ++i )
+			{
+				Wait(0.001);
+				if( topIR->Get() == BALL_NOT_VISIBLE )
+					break;
+			}
+			
+			Wait(0.1);
+			
 			grabber->Set(COLLECTOR_STOP);
 			lifter->Set(COLLECTOR_STOP);
-			balls = 0;
+			if (balls >= 1) {
+				balls--;
+			}
 			collectorState = LOOKING_FOR_BALLS;
 			break;
 			
@@ -251,7 +305,28 @@ void Collector::ThreadLoop()
 			balls = 0;
 			collectorState = LOOKING_FOR_BALLS;
 			break;
-			
+		}
+
+		if (lastStage != collectorState) {
+			COLLECTOR.secondaryDisplay.printfLine(6, "Collector: %d to %d\n", lastStage, collectorState);
+			lastStage = collectorState;
 		}
 	}	
+}
+
+void Collector::ChangeBallCountBy(int c)
+{
+	int tmpBalls = balls + c;
+	if (tmpBalls < 0) {
+		tmpBalls = 0;
+	}
+	if (tmpBalls > (int)MAX_BALLS) {
+		tmpBalls = MAX_BALLS;
+	}
+	balls = tmpBalls;
+}
+
+int Collector::GetBalls()
+{
+	return balls;
 }

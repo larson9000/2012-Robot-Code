@@ -2,14 +2,9 @@
 #define SHOOTER_H
 
 #include <WPILib.h>
+#include "DisplayWriter.h"
 #include "SharpIR.h"
-
-enum TurretDirection
-{
-	TURRET_OFF,
-	TURRET_LEFT,
-	TURRET_RIGHT,
-};
+#include "SingleChannelEncoder.h"
 
 class Shooter
 {
@@ -17,23 +12,31 @@ public:
 	Shooter();
 	~Shooter();
 	
-	void MoveTurret(TurretDirection direction);
+	double GetTopRatio() const { return topRatio; }
+	void SetPID(double p, double i, double d);
+	void SetTopRatio(double ratio);
 	void SetTurret(double direction);
-	void Shoot(double speed);
-	void ShootBasket(double distance, int level);
+	void Shoot(double speed, Joystick* joyStick, int shots );
+	void ShootBasket(double distance, Joystick* joyStick, int shots );
 	void Update();
 	
+	void reservePrimaryLines();
+	void reserveSecondaryLines();
+	
 private:
-	Jaguar* 		bottomJag;
-	Jaguar* 		topJag;
-	PIDController*	bottomPID;
-	PIDController*	topPID;
-	Encoder*		bottomEncoder;
-	Encoder*		topEncoder;
-	Encoder*		turretEncoder;
-	Victor* 		turretVictor;
-	SharpIR*		turretIR;
-	int				turretPosition;
+	DisplayWriter				primaryDisplay;
+	DisplayWriter				secondaryDisplay;
+	double 					turretDirection;
+	Jaguar* 				bottomJag;
+	Jaguar* 				topJag;
+	PIDController*			bottomPID;
+	PIDController*			topPID;
+	SingleChannelEncoder*	bottomEncoder;
+	SingleChannelEncoder*	topEncoder;
+	Encoder*				turretEncoder;
+	Victor* 				turretVictor;
+	SharpIR*				turretIR;
+	double					topRatio;
 };
 
 #endif // SHOOTER_H

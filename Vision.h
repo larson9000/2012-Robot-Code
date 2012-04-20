@@ -2,6 +2,8 @@
 #define VISION_H
 
 #include "WPILib.h"
+#include "DisplayWriter.h"
+#include <vector>
 
 struct TargetReport 
 {
@@ -9,20 +11,31 @@ struct TargetReport
 	double height;
 	double x;
 	double y;
+	double centerX;
+	double centerY;
 	double size;
-	double normalized_x; //units of Joystick plane
-	double normalized_y; //units of Joystick plane
+	double normalizedX; //units of Joystick plane
+	double normalizedY; //units of Joystick plane
 	double normalizedWidth;
 	double normalizedHeight;
 	double distance; //ft
-	bool operator<(TargetReport &rhs) {return size > rhs.size;}
+	//bool operator<(TargetReport &rhs) {return size > rhs.size;}
+	bool operator<(TargetReport &rhs) {return normalizedY > rhs.normalizedY;}
 };
+
+struct TargetPair
+{
+	int a;
+	int b;
+	bool set;
+};
+
 
 class VisionSpecifics
 {
 public:
 	virtual ~VisionSpecifics() {}
-	virtual void GetBestTargets(HSLImage * img, TargetReport* targets, int& count) = 0;
+	virtual void GetBestTargets(HSLImage * img, vector<TargetReport> &targets, int& count) = 0;
 };
 
 class Vision
@@ -41,18 +54,26 @@ public:
      * \param distance the distance to the target.
      * \param targetLevel the height level of the target.
      */
-    void FindTarget(double& offset, double& distance, int& targetLevel);
+	void FindTarget(double& offset, double& distance);
     
-    TargetReport GetBestTarget() const { return bestTargets[0]; }
+	TargetReport GetBestTarget() const { return bestTargets[0]; }
+
+	void reservePrimaryLines();
+	void reserveSecondaryLines();
+
+	DisplayWriter primaryDisplay;
+	DisplayWriter secondaryDisplay;
     
 private:
 	static void loop();
-    bool* GetTargetCase(TargetReport* targets, int targetCount);
-	
+    void GetTargetCase(vector <TargetReport> &targets, int numtargets, int & top, int & left, int & right, int & bottom);
+    bool isHorizontallyAligned(TargetReport &targets1, TargetReport &targets2);
+    bool isVerticallyAligned(TargetReport &targets1, TargetReport &targets2);
+    bool isBottomTarget( TargetReport &target );
 	Task* visionTask;
 	
     static int bestTargetCount;
-	static TargetReport bestTargets[4];
+	static vector<TargetReport> bestTargets;
 	static AxisCamera* cam;
 	static VisionSpecifics* engine;
 };

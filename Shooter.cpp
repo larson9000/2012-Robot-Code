@@ -4,9 +4,12 @@
 #include "Shooter.h"
 #include "Singleton.h"
 #include "Collector.h"
-#include "Display.h"
+#include "DisplayWriter.h"
+#include "DisplayWrapper.h"
 
-using namespace std;
+void Shooter::reservePrimaryLines() { primaryDisplay.reserve(0); }
+void Shooter::reserveSecondaryLines() { secondaryDisplay.reserve(3); }
+
 
 /**
  * Find the perfect speed to shoot the ball into a basket.
@@ -32,7 +35,9 @@ static double GetShootVelocity(double distance, double elevation, double shootAn
 	return rootG * fabs(distance + variance)/ sqrt(fabs(cosAngle*elevation+elevation-sinAngle*distance-variance*sinAngle));
 }
 
-Shooter::Shooter()
+Shooter::Shooter() :
+		turretDirection(0.0),
+		topRatio(.104)
 {
 	Singleton<Logger>::GetInstance().Logf("Shooter: Starting up...");
 	//Setup Jaguars
@@ -41,11 +46,20 @@ Shooter::Shooter()
 	turretVictor = new Victor(TURRET_CHANNEL);
 //	turretIR = new SharpIR( 1, IR_TURRET_CHANNEL, TURRET_SIGNAL_VOLTAGE );
 //	turretPosition = 0;
-	topEncoder = new Encoder(SHOOTER_TOP_ENCODER_A, SHOOTER_TOP_ENCODER_B);
-	bottomEncoder = new Encoder(SHOOTER_BOTTOM_ENCODER_A, SHOOTER_BOTTOM_ENCODER_B);
+	topEncoder = new SingleChannelEncoder(SHOOTER_TOP_ENCODER_A, *topJag );
+	bottomEncoder = new SingleChannelEncoder(SHOOTER_BOTTOM_ENCODER_A, *bottomJag);
 	turretEncoder = new Encoder(TURRET_ENCODER_A, TURRET_ENCODER_B);
-	topPID = new PIDController(0.1, 0.01, 0.0, topEncoder, topJag);
-	bottomPID = new PIDController(0.1, 0.01, 0.0, bottomEncoder, bottomJag);
+	
+	topPID = new PIDController(.12, .013, 0.0, topEncoder, topJag);
+	bottomPID = new PIDController(.12, .013, 0.0, bottomEncoder, bottomJag);
+	
+	topEncoder->Reset();
+	topEncoder->Start();
+	bottomEncoder->Reset();
+	bottomEncoder->Start();
+	
+	topPID->SetSetpoint(0);
+	bottomPID->SetSetpoint(0);
 	
 	double pulseDistance = (TURRET_WHEEL_DIAMETER / TURRET_LAZY_SUSAN_DIAMETER) * 360.0 / (double)TURRET_ENCODER_PULSES;
 	turretEncoder->SetDistancePerPulse(pulseDistance);
@@ -69,88 +83,97 @@ Shooter::~Shooter()
 	delete bottomPID;
 }
 
-void Shooter::Shoot(double speed)
+void Shooter::Shoot(double speed , Joystick* joystick, int shots )
 {
 	Collector& collector = Singleton<Collector>::GetInstance();
-	Singleton<Logger>::GetInstance().Logf("Shooting a ball with speed [%f ft/s] and spin [%f Hz]", speed, 0.0);
 	
-	///\todo Check inversion.
-	//this->topJag->Set(-1.0 * speed / MAX_SHOOTER_SPEED);
-	//this->bottomJag->Set(speed / MAX_SHOOTER_SPEED);
-	//topEncoder->Reset();
-	//topEncoder->Start();
-	//bottomEncoder->Reset();
-	//bottomEncoder->Start();
-	//topPID->SetSetpoint(-1.0 * speed / MAX_SHOOTER_SPEED);
-	//bottomPID->SetSetpoint(-0.75 * speed / MAX_SHOOTER_SPEED);
+	topPID->Enable();
+	bottomPID->Enable();
 	
-	//topPID->Enable();
-	//bottomPID->Enable();
-	topJag->Set(-1.0 * speed / MAX_SHOOTER_SPEED);
-	bottomJag->Set(-0.75 * speed / MAX_SHOOTER_SPEED);
-	Wait(2.5);
-	collector.Shoot();
+	topPID->SetSetpoint(-1.0 * topRatio * speed);
+	bottomPID->SetSetpoint(-1.0 * speed);
+	
+    do
+    {
+	    int count = 0;
+	    int limiter = 0;
+	    // wait for shooter to get up to speed as long as they are still pushing the trigger
+        while( count < 10 && limiter < 750 && ( joystick->GetRawButton(1) || shots > 0))
+	    {
+            // both encoders there?
+		    if( (fabs(bottomEncoder->GetRate() - speed) <= 0.25 ) && (fabs(topEncoder->GetRate() - (topRatio * speed)) <= 0.25 ))
+			    count++;
+		    else
+			    count = 0;
+		    SHOOTER.secondaryDisplay.printfLine(0, "TopRate:%.3f", SHOOTER.topEncoder->GetRate());
+		    SHOOTER.secondaryDisplay.printfLine(1, "BotRate:%.3f", SHOOTER.bottomEncoder->GetRate());
+			DisplayWrapper::GetInstance()->output();
+		    Wait(0.01);
+		    limiter++;
+	    }
+        if( joystick->GetRawButton(1) || shots > 0 )
+        {
+            collector.Shoot();
+            shots--;
+        }
+
+    } while ( joystick->GetRawButton(1) || shots > 0 ); // while joystick trigger is pressed, continue firing
+    
+    topPID->SetSetpoint(0);
+	bottomPID->SetSetpoint(0);
+	
+	topPID->Disable();
+	bottomPID->Disable();
+
 	bottomJag->Set(0.0);
 	topJag->Set(0.0);
-	
-	//topPID->Disable();
-	//bottomPID->Disable();
-	//topEncoder->Stop();
-	//bottomEncoder->Stop();
 }
 
-void Shooter::ShootBasket(double distance, int level)
+void Shooter::ShootBasket(double distance, Joystick* joystick, int shots )
 {
-	Singleton<Logger>::GetInstance().Logf("Shooting a basket at distance [%f ft] at level [%d]", distance, level);
+	double spin = 1.827142857E-2*distance - 0.19;
+	SetTopRatio(spin);
 	
-	//Calculate the ideal velocity
-	double basketElevation;
-	switch( level )
+	/*
+	// Waiting for the top to stop moving
+	while ( topEncoder->GetRate() != 0 )
 	{
-		case 1:
-			basketElevation = BASKET_1_ELEVATION;
-			break;
-			
-		case 2:
-			basketElevation = BASKET_2_ELEVATION;
-			break;
-			
-		case 3:
-			basketElevation = BASKET_3_ELEVATION;
-			break;
-			
-		default:
-			return;
+		topEncoder->PIDGet();
+		Wait(0.1);
 	}
-	double elevation = SHOOTER_ELEVATION - basketElevation;
-	double velocity = GetShootVelocity(distance, elevation, SHOOTER_ANGLE, BASKET_RADIUS, BALL_RADIUS);
+	*/
 	
-	Shoot(velocity);
+	Shoot(27.7, joystick, shots );
 }
 
-void Shooter::MoveTurret(TurretDirection direction)
+void Shooter::SetPID(double p, double i, double d)
 {
-	switch( direction )
-	{
-		case TURRET_OFF:
-			SetTurret(0.0);
-			break;
-			
-		case TURRET_LEFT:
-			SetTurret(-0.25);
-			break;
-			
-		case TURRET_RIGHT:
-			SetTurret(0.25);
-			break;
-	}
+	this->bottomPID->SetPID(p, i, d);
+	this->topPID->SetPID(p, i, d);
+}
+
+void Shooter::SetTopRatio(double ratio)
+{
+	topRatio = ratio;
+	if( topRatio > 1.0 )
+		topRatio = 1.0;
 }
 
 void Shooter::SetTurret(double direction)
 {
-	double rotation = turretEncoder->GetDistance(); // This is in degrees left/right
-	__UNUSED(rotation);
-	///\todo limit rotation
+	turretDirection = direction;
 	this->turretVictor->Set( -1.0 * direction );
-	Singleton<Display>::GetInstance().PrintfLine(5, "Turret:%f", direction);
+	SHOOTER.secondaryDisplay.printfLine(2, "T:%f", direction);
+}
+
+void Shooter::Update()
+{
+	double rotation = turretEncoder->GetDistance();
+	if( (rotation < -90 && turretDirection < 0)  || (rotation > 90 && turretDirection > 0) )
+		SetTurret(0);
+	
+	//topEncoder->PIDGet();
+	//bottomEncoder->PIDGet();
+    SHOOTER.secondaryDisplay.printfLine(0, "TopRate:%.3f", SHOOTER.topEncoder->GetRate());
+    SHOOTER.secondaryDisplay.printfLine(1, "BotRate:%.3f", SHOOTER.bottomEncoder->GetRate());
 }
