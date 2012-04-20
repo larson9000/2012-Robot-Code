@@ -10,13 +10,14 @@
 #include "Vision.h"
 #include <fstream>
 
+bool Vision::enabled = true;
 AxisCamera *Vision::cam= NULL;
 VisionSpecifics *Vision::engine= NULL;
 int Vision::bestTargetCount = 0;
 vector<TargetReport> Vision::bestTargets = vector<TargetReport>();
 
-void Vision::reservePrimaryLines() { primaryDisplay.reserve(1); }
-void Vision::reserveSecondaryLines() { secondaryDisplay.reserve(4); }
+void Vision::reservePrimaryLines() { primaryDisplay.Reserve(1); }
+void Vision::reserveSecondaryLines() { secondaryDisplay.Reserve(5); }
 
 
 /**
@@ -61,9 +62,11 @@ void Vision::loop()
 	while (true)
 	{
 		HSLImage* cap = new HSLImage;
-		cam->GetImage(cap);
-		engine->GetBestTargets(cap, bestTargets, bestTargetCount);
-		VISION.primaryDisplay.printfLine(0, "Vis #:%d Dist:%f H:%f", bestTargetCount, bestTargets[0].distance, bestTargets[0].height);
+		if(enabled) {
+			cam->GetImage(cap);
+			engine->GetBestTargets(cap, bestTargets, bestTargetCount);
+			VISION.primaryDisplay.PrintfLine(0, "Vis #:%d Dist:%f H:%f", bestTargetCount, bestTargets[0].distance, bestTargets[0].height);
+		}
 		delete cap;
 		Wait(0.01);
 	}
@@ -355,24 +358,22 @@ void Vision::FindTarget(double& offset, double& distance)
 	distance = 0.0;
 	offset = 0.0;
 
-	/*
 	TargetReport tmp = GetBestTarget();
 	if (tmp.normalizedY > 0.0)
 	{
 		distance = tmp.distance;
 		offset = tmp.normalizedX;
 	}
-	*/
 
 	if (bestTargetCount == 0)
 		return;
 	int targetCase[4] = { -1, -1, -1, -1 };
 	GetTargetCase(bestTargets, bestTargetCount, targetCase[TOP_TARGET], targetCase[LEFT_TARGET], targetCase[RIGHT_TARGET], targetCase[BOTTOM_TARGET]);
 	
-	secondaryDisplay.printfLine(0, "Top Target: %d", targetCase[TOP_TARGET]);
-	secondaryDisplay.printfLine(1, "Left Target: %d", targetCase[LEFT_TARGET]);
-	secondaryDisplay.printfLine(2, "Right Target: %d", targetCase[RIGHT_TARGET]);
-	secondaryDisplay.printfLine(3, "Bottom Target: %d", targetCase[BOTTOM_TARGET]);
+	secondaryDisplay.PrintfLine(0, "Top Target: %d", targetCase[TOP_TARGET]);
+	secondaryDisplay.PrintfLine(1, "Left Target: %d", targetCase[LEFT_TARGET]);
+	secondaryDisplay.PrintfLine(2, "Right Target: %d", targetCase[RIGHT_TARGET]);
+	secondaryDisplay.PrintfLine(3, "Bottom Target: %d", targetCase[BOTTOM_TARGET]);
 	// Handle target cases
 
 	if (targetCase[TOP_TARGET] >= 0 && targetCase[BOTTOM_TARGET] >= 0)

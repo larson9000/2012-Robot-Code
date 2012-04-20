@@ -4,6 +4,8 @@
 #include <fstream>
 #include <string>
 
+#include <WPILib.h>
+
 /**
  * A logger for diagnostic purposes.
  */
@@ -28,8 +30,10 @@ public:
 	 * \param format the format string.
 	 */
 	void Logf(const char* format, ...);
+	void LogVar(const char* name, const char* format, ...);
 	
 private:
+	Timer timer;
 	std::ofstream file;
 };
 

@@ -60,6 +60,8 @@ public:
 
 	void reservePrimaryLines();
 	void reserveSecondaryLines();
+	
+	void setEnabled(bool e) { enabled = e; }
 
 	DisplayWriter primaryDisplay;
 	DisplayWriter secondaryDisplay;
@@ -72,6 +74,7 @@ private:
     bool isBottomTarget( TargetReport &target );
 	Task* visionTask;
 	
+	static bool enabled;
     static int bestTargetCount;
 	static vector<TargetReport> bestTargets;
 	static AxisCamera* cam;

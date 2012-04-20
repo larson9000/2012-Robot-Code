@@ -11,18 +11,24 @@
 #include "SharpIR.h"
 #include "Shooter.h"
 
+bool Robot::operatorControlEnabled = false;
+Robot* Robot::me = NULL;
+
 Robot::Robot()
 {
-	GetWatchdog().SetEnabled(false); ///\todo enable this before the competition
+	me = this;
+
+	GetWatchdog().SetEnabled(false);
 
 	speedMultiplier = 1.0;
 	shotModifierX = 0;			// start with a count of left/right adjustment in .01 increments
-	shotModifierZ = 0;			// start with a count of distance adjustments in 6" increments
+	shotModifierZ = -2;			// start with a count of distance adjustments in 6" increments
 
 	Logger* logger = new Logger("/ni-rt/system/logs/robot.txt");
 	Singleton<Logger>::SetInstance(logger);
 
 	vision = new Vision(new SquareFinder);
+	vision->setEnabled(true); //Don't process without button.
 	vision->start();
 	Singleton<DriveTrain>::SetInstance(new DriveTrain);
 	Singleton<Collector>::SetInstance(new Collector);
@@ -31,23 +37,25 @@ Robot::Robot()
 
 	// The order in which lines are reserved dictates the order
 	// in which lines are displayed on the LCD.
-	this->primaryDisplay.reserve(1);
+	this->primaryDisplay.Reserve(1);
 	COLLECTOR.reservePrimaryLines();
 	SHOOTER.reservePrimaryLines();
-	DRIVETRAIN.reservePrimaryLines();
+	DRIVETRAIN.ReservePrimaryLines();
 	VISION.reservePrimaryLines();
 	SQUAREFINDER.reservePrimaryLines();
 
 	// There is some additional information, secondary information,
 	// that comes after all of the primary information.
-	this->secondaryDisplay.reserve(7);
+	this->secondaryDisplay.Reserve(7);
 	COLLECTOR.reserveSecondaryLines();
 	SHOOTER.reserveSecondaryLines();
-	DRIVETRAIN.reserveSecondaryLines();
+	DRIVETRAIN.ReserveSecondaryLines();
 	VISION.reserveSecondaryLines();
 	SQUAREFINDER.reserveSecondaryLines();
 
 	Singleton<Logger>::GetInstance().Logf("Starting the Robot class.");
+
+	operatorControlTask = new Task("2502OC", (FUNCPTR)OperatorControlLoop);
 
 	//balanceAccelerometer = new AccelPID_Wrapper(new ADXL345_I2C(1)); //Takes ownership of ADXL345
 
@@ -69,19 +77,19 @@ Robot::Robot()
 	joystickCallbackHandler->SetHeldCallback(TURRET_BUTTON, GET_FUNC(MoveTurret));
 	joystickCallbackHandler->SetUpCallback(TURRET_BUTTON, GET_FUNC(TurretOff));
 
-	joystickCallbackHandler->SetHeldCallback(9, GET_FUNC(RatioDown));
-	joystickCallbackHandler->SetHeldCallback(11, GET_FUNC(RatioUp));
+	//joystickCallbackHandler->SetHeldCallback(9, GET_FUNC(RatioDown));
+	//joystickCallbackHandler->SetHeldCallback(10, GET_FUNC(RatioUp));
 
 	// Change Ball Count
 	joystickCallbackHandler->SetDownCallback(COLLECTOR_ADD_BALL_BUTTON, GET_FUNC(CollectorIncBall));
 	joystickCallbackHandler->SetDownCallback(COLLECTOR_SUB_BALL_BUTTON, GET_FUNC(CollectorDecBall));
 
-	/*
-	 joystickCallbackHandler->SetDownCallback(11, GET_FUNC(HalfSpeedOn));
-	 joystickCallbackHandler->SetDownCallback(12, GET_FUNC(QuarterSpeedOn));
-	 joystickCallbackHandler->SetUpCallback(11, GET_FUNC(NormalSpeed));
-	 joystickCallbackHandler->SetUpCallback(12, GET_FUNC(NormalSpeed));
-	 */
+	joystickCallbackHandler->SetHeldCallback(9, GET_FUNC(MediumSpeedOn));
+	joystickCallbackHandler->SetHeldCallback(11, GET_FUNC(SlowSpeedOn));
+	joystickCallbackHandler->SetUpCallback(9, GET_FUNC(NormalSpeed));
+	joystickCallbackHandler->SetUpCallback(11, GET_FUNC(NormalSpeed));
+	joystickCallbackHandler->SetHeldCallback(4, GET_FUNC(forceDriveOn));
+
 	//joystickCallbackHandler->SetDownCallback(BalanceRobot,GET_FUNC(BalanceRobotOn));
 	//joystickCallbackHandler->SetUpCallback(BalanceRobot,GET_FUNC(BalanceRobotOff));
 }
@@ -98,20 +106,28 @@ Robot::~Robot()
 	Singleton<Shooter>::DestroyInstance();
 
 	delete joystickCallbackHandler;
+	delete operatorControlTask;
 
 	//delete balancePID;
 	//delete balanceAccelerometer;
+
+	me = NULL;
+}
+
+void Robot::forceDriveOn()
+{
+	DRIVETRAIN.setEnabled(true);
 }
 
 void Robot::RampDown()
 {
-	ROBOT.primaryDisplay.printfLine(0, "Ramp Going Down");
+	ROBOT.primaryDisplay.PrintfLine(0, "Ramp Going Down");
 	Singleton<Collector>::GetInstance().ManipulateRamp(DOWN);
 }
 
 void Robot::RampUp()
 {
-	ROBOT.primaryDisplay.printfLine(0, "Ramp Going Up");
+	ROBOT.primaryDisplay.PrintfLine(0, "Ramp Going Up");
 	Singleton<Collector>::GetInstance().ManipulateRamp(UP);
 }
 
@@ -160,13 +176,13 @@ void Robot::ShotZDec()
 
 void Robot::RampOff()
 {
-	ROBOT.primaryDisplay.printfLine(0, "Ramp Turning Off");
+	ROBOT.primaryDisplay.PrintfLine(0, "Ramp Turning Off");
 	Singleton<Collector>::GetInstance().ManipulateRamp(RAMP_OFF);
 }
 
 void Robot::CollectorEject()
 {
-	ROBOT.primaryDisplay.printfLine(0, "Ejecting Ball");
+	ROBOT.primaryDisplay.PrintfLine(0, "Ejecting Ball");
 	Singleton<Collector>::GetInstance().Eject();
 }
 
@@ -175,7 +191,7 @@ void Robot::Autonomous()
 	Singleton<Logger>::GetInstance().Logf("Starting Autonomous Mode.");
 	Singleton<Collector>::GetInstance().SetBallCount( 2); // preloaded with 2 balls in autonomous
 
-	primaryDisplay.printfLine(0, "Shooting 2");
+	primaryDisplay.PrintfLine(0, "Shooting 2");
 	ShootBasket( 2 );
 
 	KinectStick leftStick(1);
@@ -184,23 +200,23 @@ void Robot::Autonomous()
 	Timer displayUpdateFrequency;
 	displayUpdateFrequency.Start();
 
-	primaryDisplay.printfLine(0, "Kinect Controls");
+	primaryDisplay.PrintfLine(0, "Kinect Controls");
 	while (IsAutonomous() )
 	{
-		secondaryDisplay.printfLine(1, "Shot-Dir: %.2f", shotDirectionModifier());
-		secondaryDisplay.printfLine(2, "Shot-Dist: %.1f\"", shotDistanceModifier());
+		secondaryDisplay.PrintfLine(1, "Shot-Dir: %.2f", shotDirectionModifier());
+		secondaryDisplay.PrintfLine(2, "Shot-Dist: %.1f\"", shotDistanceModifier());
 
 		DRIVETRAIN.SetLeft(-leftStick.GetY());
 		DRIVETRAIN.SetRight(rightStick.GetY());
 		if (leftStick.GetRawButton(1) ) // Left Leg Out
 		{
-			primaryDisplay.printfLine(0, "Ramp UP");
+			primaryDisplay.PrintfLine(0, "Ramp UP");
 			RampUp();
 		}
 
 		if (leftStick.GetRawButton(2) ) // Right Leg Out
 		{
-			primaryDisplay.printfLine(0, "Ramp DOWN");
+			primaryDisplay.PrintfLine(0, "Ramp DOWN");
 			RampDown();
 		}
 
@@ -209,13 +225,13 @@ void Robot::Autonomous()
 
 		// The Joystick Throttle controls the scrolling of the display
 		// The display is updated at a controlled pace
-		DisplayWrapper::GetInstance()->setScrollLocation(joystick1->GetThrottle());
+		DisplayWrapper::GetInstance()->SetScrollLocation(joystick1->GetThrottle());
 		if (displayUpdateFrequency.HasPeriodPassed(1.0 / 5)) {
-			secondaryDisplay.printfLine(1, "Shot-Dir: %.2f", shotDirectionModifier());
-			secondaryDisplay.printfLine(2, "Shot-Dist: %.1f\'", shotDistanceModifier());
+			secondaryDisplay.PrintfLine(1, "Shot-Dir: %.2f", shotDirectionModifier());
+			secondaryDisplay.PrintfLine(2, "Shot-Dist: %.1f\'", shotDistanceModifier());
 
 			displayUpdateFrequency.Reset();
-			DisplayWrapper::GetInstance()->output();
+			DisplayWrapper::GetInstance()->Output();
 		}
 
 		Wait(0.1);
@@ -227,63 +243,79 @@ void Robot::Autonomous()
 void Robot::OperatorControl()
 {
 	LOGGER.Logf("Starting operator control.");
-	DriveTrain& driveTrain = Singleton<DriveTrain>::GetInstance();
 
+	operatorControlEnabled = true;
+	operatorControlTask->Start();
+	while ( IsOperatorControl() ) 
+	{
+		float x, y, rot;
+		me->joystick1->GetAxis(&x, &y);
+		rot = me->joystick1->GetRawRotation();
+
+		if ( !me->joystick1->GetButton(TURRET_BUTTON) )
+			DRIVETRAIN.DriveArcade(me->speedMultiplier*rot, me->speedMultiplier * cubicFilter(-y));
+
+		me->secondaryDisplay.PrintfLine(2, "X/Y/R: %f/%f/%f", x, y, rot);
+		me->secondaryDisplay.PrintfLine(3, "rps:%f", ((me->joystick1->GetThrottle() + 1.0) / 2.0) * 15.0 + 20.0);
+		me->secondaryDisplay.PrintfLine(4, "ratio:%f", Singleton<Shooter>::GetInstance().GetTopRatio());
+
+		//This thread NEEDS to run at all times for network communication! DO NOT REMOVE THIS!
+		Wait(0.01);
+	}
+	operatorControlEnabled = false;
+	Wait(0.5);
+	operatorControlTask->Stop();
+	LOGGER.Logf("Stopping operator control.");
+}
+
+void Robot::OperatorControlLoop()
+{
 	Timer displayUpdateFrequency;
 	displayUpdateFrequency.Start();
 
-	ROBOT.primaryDisplay.printfLine(0, "Joystick Controls");
-	while (IsOperatorControl())
+	ROBOT.primaryDisplay.PrintfLine(0, "Joystick Controls");
+
+	while( operatorControlEnabled )
 	{
-		joystickCallbackHandler->Update();
-		float x, y, rot;
-		joystick1->GetAxis(&x, &y);
-		rot = joystick1->GetRawRotation();
-
-		if ( !joystick1->GetButton(TURRET_BUTTON) )
-			driveTrain.DriveArcade(speedMultiplier*rot, speedMultiplier
-					*cubicFilter(-y));
-
-		secondaryDisplay.printfLine(2, "X/Y/R: %f/%f/%f", x, y, rot);
-		secondaryDisplay.printfLine(3, "rps:%f", ((joystick1->GetThrottle() + 1.0) / 2.0) * 15.0 + 20.0);
-		secondaryDisplay.printfLine(4, "ratio:%f", Singleton<Shooter>::GetInstance().GetTopRatio());
+		DRIVETRAIN.setEnabled(true);
+		me->joystickCallbackHandler->Update(); //long call.
 
 		double offset, distance;
 		Singleton<Vision>::GetInstance().FindTarget(offset, distance);
-		secondaryDisplay.printfLine(5, "Speed:%f", SIGN(offset)*.15+.1*offset);
-		secondaryDisplay.printfLine(6, "Vis:%1.4f,%1.4", offset, distance);
+		me->secondaryDisplay.PrintfLine(5, "Speed:%f", SIGN(offset)*.15+.1*offset);
+		me->secondaryDisplay.PrintfLine(6, "Vis:%1.4f,%1.4", offset, distance);
 
-		Singleton<Shooter>::GetInstance().Update();
+		SHOOTER.Update();
 
 		// The display is updated at a controlled pace
-		if (displayUpdateFrequency.HasPeriodPassed(1.0 / 5)) {
+		if (displayUpdateFrequency.HasPeriodPassed(1.0 / 5)) 
+		{
 			// this is a convenient time to check the HAT for shot adjustments
 			float xaxis, yaxis;
-			joystick1->GetPov(&xaxis, &yaxis);
+			me->joystick1->GetPov(&xaxis, &yaxis);
 			if (xaxis < 0)
-				ShotXDec();
+				me->ShotXDec();
 			if (xaxis > 0)
-				ShotXInc();
+				me->ShotXInc();
 			if (yaxis < 0)
-				ShotZDec();
+				me->ShotZDec();
 			if (yaxis > 0)
-				ShotZInc();
+				me->ShotZInc();
 
 			displayUpdateFrequency.Reset();
 
-			secondaryDisplay.printfLine(1, "Shot-Dir: %.2f", shotDirectionModifier());
-			secondaryDisplay.printfLine(2, "Shot-Dist: %.1f\'", shotDistanceModifier());
+			me->secondaryDisplay.PrintfLine(1, "Shot-Dir: %.2f", me->shotDirectionModifier());
+			me->secondaryDisplay.PrintfLine(2, "Shot-Dist: %.1f\'", me->shotDistanceModifier());
 
 			// The Joystick Throttle controls the scrolling of the display
-			DisplayWrapper::GetInstance()->setScrollLocation(joystick1->GetThrottle());
+			DisplayWrapper::GetInstance()->SetScrollLocation(-1.0 * me->joystick1->GetThrottle());
 
 			// update the LCD
-			DisplayWrapper::GetInstance()->output();
+			DisplayWrapper::GetInstance()->Output();
 		}
 
 		Wait(0.01);
 	}
-	LOGGER.Logf("Stopping operator control.");
 }
 
 void Robot::BalanceRobotOff()
@@ -296,6 +328,7 @@ void Robot::BalanceRobotOn()
 	balancePID->Enable();
 	balancePID->SetSetpoint(0.0);
 }
+
 void Robot::ShootBasketTeleoperated()
 {
 	ShootBasket( 0 );
@@ -310,36 +343,53 @@ void Robot::ShootBasket( int shots )
 	Vision& vision = Singleton<Vision>::GetInstance();
 
 	// disable the drive
-	DRIVETRAIN.DriveArcade(0.0, 0.0);
+	DRIVETRAIN.setEnabled(false);
 
 	collector.PrepareToShoot();
 
 	Timer alignTimer;
 	alignTimer.Start();
-	while(!alignTimer.HasPeriodPassed(3.5) && (joystick1->GetJoystick()->GetRawButton(1) || shots > 0) )
+	int count = 0;
+	
+	double averageDistance = 0.0;
+	
+	while(!alignTimer.HasPeriodPassed(3.5) && (joystick1->GetJoystick()->GetRawButton(1) || shots > 0)) //Shots==0 -> teleop
 	{
 		vision.FindTarget(offset, distance);
 		offset += shotDirectionModifier();
 		distance += shotDistanceModifier();
 
-		ROBOT.secondaryDisplay.printfLine(5, "Speed:%f", SIGN(offset)*.15+.1*offset);
-		ROBOT.secondaryDisplay.printfLine(6, "Vis:%1.4f,%1.4", offset, distance);
-		DisplayWrapper::GetInstance()->output();
+		ROBOT.secondaryDisplay.PrintfLine(5, "Speed:%f", (SIGN(offset)*-0.175));
+		ROBOT.secondaryDisplay.PrintfLine(6, "Vis:%1.4f,%1.4", offset, distance);
+		DisplayWrapper::GetInstance()->Output();
 		if (fabs(offset) < 0.02 && distance != 0)
-			break;
-		shooter.SetTurret(-1.0*(SIGN(offset)*/*.16*/.175));
+		{
+			averageDistance += distance;
+			count++;
+			if( count >= 10 )
+				break;
+		}
+		shooter.SetTurret((SIGN(offset)*-0.175));
 		Wait(0.05);
 		shooter.SetTurret(0.0);
 		if( fabs(offset) <= .2)
 			Wait(.2 - fabs(offset));
 	}
 	shooter.SetTurret(0.0);
-    // if timer expired or the user has released the trigger button
-	if (alignTimer.HasPeriodPassed(3.5) || ( !joystick1->GetJoystick()->GetRawButton(1) && shots == 0 ))
+	
+	averageDistance /= (double) count;
+	distance = averageDistance;
+
+	// if timer expired or the user has released the trigger button
+	if (alignTimer.HasPeriodPassed(3.5) || ( !joystick1->GetJoystick()->GetRawButton(1) && shots == 0 )) { //shots==0==not auto
+		DRIVETRAIN.setEnabled(true); //Fix
 		return;
+	}
 
 	shooter.ShootBasket(distance, joystick1->GetJoystick() , shots );
-	//shooter.Shoot(27.7);
+	//shooter.SetTopRatio(1.0);
+	//shooter.Shoot(27.7, joystick1->GetJoystick(), shots);
+	DRIVETRAIN.setEnabled(true);
 }
 
 void Robot::MoveTurret()
@@ -354,14 +404,14 @@ void Robot::TurretOff()
 	SHOOTER.SetTurret(0);
 }
 
-void Robot::HalfSpeedOn()
+void Robot::MediumSpeedOn()
 {
 	speedMultiplier = 0.5;
 }
 
-void Robot::QuarterSpeedOn()
+void Robot::SlowSpeedOn()
 {
-	speedMultiplier = 0.25;
+	speedMultiplier = 0.4;
 }
 
 void Robot::NormalSpeed()
@@ -371,12 +421,14 @@ void Robot::NormalSpeed()
 
 void Robot::RatioDown()
 {
-	SHOOTER.SetTopRatio(SHOOTER.GetTopRatio() * 0.99);
+	//SHOOTER.SetTopRatio(SHOOTER.GetTopRatio() * 0.99);
+	SHOOTER.SetTurretRatio(SHOOTER.GetTurretRatio() * 0.995);
 }
 
 void Robot::RatioUp()
 {
-	SHOOTER.SetTopRatio(SHOOTER.GetTopRatio() * 1.01);
+	//SHOOTER.SetTopRatio(SHOOTER.GetTopRatio() * 1.01);
+	SHOOTER.SetTurretRatio(SHOOTER.GetTurretRatio() * 1.005);
 }
 
 START_ROBOT_CLASS(Robot)

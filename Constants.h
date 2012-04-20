@@ -27,7 +27,8 @@ const unsigned TURRET_CHANNEL 				= 7;    //Victor
 
 
 //const unsigned RAMP_LEFT_SPIKE_RELAY 		= 1;    //Spike Relay (unused now)
-const unsigned RAMP_RIGHT_SPIKE_RELAY	 	= 2;   	//Spike Relay
+const unsigned RAMP_SPIKE_RELAY	 			= 1;   	//Spike Relay
+const unsigned RAMP_VICTOR_CHANNEL			= 8;
 
 /*   old
 const unsigned DRIVE_LEFT_ENCODER_A     = 4;
@@ -50,19 +51,19 @@ const unsigned DRIVE_RIGHT_ENCODER_B    = 4;
 //const unsigned SHOOTER_BOTTOM_ENCODER_B = 6;
 //const unsigned SHOOTER_TOP_ENCODER_A    = 7;
 //const unsigned SHOOTER_TOP_ENCODER_B    = 8;
-const unsigned SHOOTER_BOTTOM_ENCODER_A = 6;
+const unsigned SHOOTER_BOTTOM_ENCODER_A = 5;
 //const unsigned SHOOTER_BOTTOM_ENCODER_B = 6;
-const unsigned SHOOTER_TOP_ENCODER_A    = 5;
+const unsigned SHOOTER_TOP_ENCODER_A    = 6;
 //const unsigned SHOOTER_TOP_ENCODER_B    = 8;
 const unsigned TURRET_ENCODER_A         = 9;
 const unsigned TURRET_ENCODER_B     	= 10;
 
 
 // Analog constants
-const unsigned IR_FRONT_CHANNEL         = 3;
-const unsigned IR_FRONT_MIDDLE_CHANNEL	= 4;
-const unsigned IR_MIDDLE_CHANNEL        = 5;
-const unsigned IR_TOP_CHANNEL           = 6;
+const unsigned IR_FRONT_CHANNEL         = 1;
+const unsigned IR_FRONT_MIDDLE_CHANNEL	= 2;
+const unsigned IR_MIDDLE_CHANNEL        = 3;
+const unsigned IR_TOP_CHANNEL           = 4;
 
 // Shooter constants
 const double TURRET_SIGNAL_VOLTAGE		= 3.0;
@@ -80,8 +81,8 @@ const double   COLLECTOR_RUNSLOW_REVERSE					= -0.5;
 const double   COLLECTOR_STOP								= 0.0;
 const double   COLLECTOR_FRONT_SIGNAL_VOLTAGE 				= 0.5;
 const double   COLLECTOR_FRONT_MIDDLE_SIGNAL_VOLTAGE 		= 0.8;
-const double   COLLECTOR_MIDDLE_SIGNAL_VOLTAGE 				= 0.5;
-const double   COLLECTOR_TOP_SIGNAL_VOLTAGE 				= 2.0;
+const double   COLLECTOR_MIDDLE_SIGNAL_VOLTAGE 				= 1.5;
+const double   COLLECTOR_TOP_SIGNAL_VOLTAGE 				= 0.85;
 const unsigned COLLECTOR_FRONT_SIGNAL_TOGGLE_COUNT			= 20; 
 const unsigned COLLECTOR_FRONT_MIDDLE_SIGNAL_TOGGLE_COUNT	= 40; 
 const unsigned COLLECTOR_MIDDLE_SIGNAL_TOGGLE_COUNT			= 10; 

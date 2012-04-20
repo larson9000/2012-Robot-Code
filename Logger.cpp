@@ -1,7 +1,5 @@
 #include <cstdarg>
 #include <cstdio>
-#include "time.h"
-#include "sysLib.h" //For sysClkRateGet()
 #include "Timer.h"
 #include "Logger.h"
 
@@ -11,7 +9,8 @@ using std::string;
 
 Logger::Logger(const string& fileName)
 {
-	this->file.open(fileName.c_str());
+	timer.Start();
+	this->file.open(fileName.c_str(), std::ios::trunc);
 }
 
 Logger::~Logger()
@@ -29,8 +28,17 @@ void Logger::Logf(const char* format, ...)
 	
 	//Create a timestamp
 	char message[300];
-	double time = (double)GetClock() / (double)CLOCKS_PER_SEC;
+	double time = timer.Get();
 	sprintf(message, "[%f] %s", time, buffer);
 	
 	this->file << message << endl;
 }
+
+void Logger::LogVar(const char* name, const char* format, ...)
+{
+	va_list args;
+	va_start(args,format);
+	char buffer[256];
+	
+}
+

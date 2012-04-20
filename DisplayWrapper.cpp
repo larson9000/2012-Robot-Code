@@ -51,7 +51,7 @@ DisplayWrapper* DisplayWrapper::GetInstance()
 	return Instance;
 }
 
-void DisplayWrapper::output()
+void DisplayWrapper::Output()
 {
 	if (false == displayDirty)
 		return;
@@ -112,7 +112,7 @@ unsigned DisplayWrapper::growBufferSize(unsigned count)
 	return priorSize;
 }
 
-void DisplayWrapper::setScrollLocation(float location)
+void DisplayWrapper::SetScrollLocation(float location)
 {
 	outputLocation = (unsigned)std::floor(((location + 1.0) / 2.0) * (float)(bufferSize - 7));
 }

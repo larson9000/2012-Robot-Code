@@ -11,8 +11,8 @@
 
 static bool ParticleLogging = false;	// false to turn off; true to turn on
 
-void SquareFinder::reservePrimaryLines() { primaryDisplay.reserve(0); }
-void SquareFinder::reserveSecondaryLines() { secondaryDisplay.reserve(0); }
+void SquareFinder::reservePrimaryLines() { primaryDisplay.Reserve(0); }
+void SquareFinder::reserveSecondaryLines() { secondaryDisplay.Reserve(0); }
 
 
 SquareFinder::SquareFinder()
@@ -113,8 +113,6 @@ void SquareFinder::GetBestTargets(HSLImage *img, vector<TargetReport> &targets, 
 		STREAM.close();
 	}
 	
-
-
 	sort(reports.begin(),reports.end());
 	if (reports.size() > 4)
 	{
@@ -123,6 +121,7 @@ void SquareFinder::GetBestTargets(HSLImage *img, vector<TargetReport> &targets, 
 	targets = reports;
 	count = reports.size();
 
+	/*
 	if(reports.size()) {
 		for(unsigned i = 0; i < reports.size() && i < 4; i++) {
 			TargetReport tr = reports[i];
@@ -149,5 +148,6 @@ void SquareFinder::GetBestTargets(HSLImage *img, vector<TargetReport> &targets, 
 			imaqWriteJPEGFile(squareImage,"/frame.jpg",750,0);
 		}
 	}
+	*/
 }
 

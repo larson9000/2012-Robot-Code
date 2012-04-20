@@ -1,18 +1,18 @@
-#include "WPILib.h"
+#include <cmath>
 
+#include <WPILib.h>
+
+#include "Constants.h"
 #include "DisplayWriter.h"
 #include "DriveTrain.h"
 #include "Math.h"
 #include "Logger.h"
 #include "Singleton.h"
-#include <cmath>
-
-void DriveTrain::reservePrimaryLines() { primaryDisplay.reserve(0); }
-void DriveTrain::reserveSecondaryLines() { secondaryDisplay.reserve(0); }
-
 
 DriveTrain::DriveTrain()
 {
+	enabled = true;
+	
 	Singleton<Logger>::GetInstance().Logf("DriveTrain() initializing.");
 
 	this->left = new Jaguar(1, 1);
@@ -20,55 +20,60 @@ DriveTrain::DriveTrain()
 
 	this->left->SetSafetyEnabled(false);
 	this->right->SetSafetyEnabled(false);
-
-	this->roboDrive = 0;
-	this->run = true;
-	this->type = ArcadeDrive;
 }
 
 DriveTrain::~DriveTrain()
 {
-	Singleton<Logger>::GetInstance().Logf("~DriveTrain() stopping.");
+	LOGGER.Logf("~DriveTrain() stopping.");
 
 	delete this->left;
 	delete this->right;
-
-	//delete this->roboDrive;
 }
 
-int round(float d, int pos = 1) {
-	if (d - floor(d) >= .5) return (int)ceil(d);
-	return (int)floor(d);
-}
-
-void DriveTrain::DriveArcade(double x, double y)
+void DriveTrain::DriveArcade(double twist, double speed)
 {
-	left->Set(-y+x);
-	right->Set(y+x);
+	if(!enabled) {
+		twist = 0.0;
+		speed = 0.0;
+	}
+	twist *= -1.0;
+	speed *= -1.0;
+	left->Set(-1.0 * speed + twist);
+	right->Set(speed + twist);
 }
 
 void DriveTrain::DriveTank(double leftChannel, double rightChannel)
 {
-	if (run) {
-		left->Set(-leftChannel);
-		right->Set(-rightChannel);
+	if(!enabled) {
+		leftChannel = 0.0;
+		rightChannel = 0.0;
 	}
+	left->Set(-1.0 * leftChannel);
+	right->Set(-1.0 * rightChannel);
 }
 
-DriveType DriveTrain::CurrentDrive()
+void DriveTrain::ReservePrimaryLines()
 {
-	return this->type;
+	primaryDisplay.Reserve(0); 
 }
 
-void DriveTrain::ChangeDrive(DriveType type)
+void DriveTrain::ReserveSecondaryLines()
 {
-	this->type = type;
+	secondaryDisplay.Reserve(0);
 }
 
-void DriveTrain::SetLeft(double v) {
-	this->left->Set(v);
+void DriveTrain::SetLeft(double value) 
+{
+	if(!enabled) {
+		value = 0.0;
+	}
+	left->Set(value);
 }
 
-void DriveTrain::SetRight(double v) {
-	this->right->Set(v);
+void DriveTrain::SetRight(double value) 
+{
+	if(!enabled) {
+		value = 0.0;
+	}
+	right->Set(value);
 }

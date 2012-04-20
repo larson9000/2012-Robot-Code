@@ -4,26 +4,23 @@
 #include <WPILib.h>
 
 class Jaguar;
-class RobotDrive;
-
-enum DriveType {
-	TankDrive, 
-	ArcadeDrive
-};
 
 /**
- * The drivetrain of our Robot. Can be driven arcade-style with a single joystick or tank-drive with two joysticks.
+ * The drivetrain of our Robot.
  */
-class DriveTrain : public PIDOutput
+class DriveTrain
 {
 public:
 	DriveTrain();
-	virtual ~DriveTrain();
+	~DriveTrain();
 	
-	void PIDWrite(float output) { DriveTank(output,output); }
-	
-	//void DriveField(double x, double y, double gyro); -- Removed because we're not using it
-	void DriveArcade(double x, double y);
+	/**
+	 * Drive arcade-style.
+	 * 
+	 * \param twist the turn speed.
+	 * \param speed the speed/direction of the robot.
+	 */
+	void DriveArcade(double twist, double speed);
 	
 	/**
 	 * Drive tank-style with two channels.
@@ -33,15 +30,13 @@ public:
 	 */
 	void DriveTank(double leftChannel, double rightChannel);
 	
-	bool run; // Mainly for quick-shutoff
-	DriveType type;
-	DriveType CurrentDrive();
-	void ChangeDrive(DriveType type);
-	void SetLeft(double v);
-	void SetRight(double v);
+	void PIDWrite(float output);
+	void ReservePrimaryLines();
+	void ReserveSecondaryLines();
+	void SetLeft(double value);
+	void SetRight(double value);
 	
-	void reservePrimaryLines();
-	void reserveSecondaryLines();
+	void setEnabled(bool enabled) { this->enabled = enabled; }
 	
 private:
 	DisplayWriter primaryDisplay;
@@ -50,6 +45,8 @@ private:
 	Jaguar* left;
 	Jaguar* right;
 	RobotDrive* roboDrive;
+	
+	bool enabled;
 };
 
 #endif // DRIVETRAIN_H

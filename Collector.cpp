@@ -14,8 +14,8 @@ SharpIR *Collector::topIR = NULL;
 CollectorState Collector::collectorState = OFF;
 Timer*	Collector::prepTimer = NULL;
 
-void Collector::reservePrimaryLines() { primaryDisplay.reserve(1); }
-void Collector::reserveSecondaryLines() { secondaryDisplay.reserve(7); }
+void Collector::reservePrimaryLines() { primaryDisplay.Reserve(1); }
+void Collector::reserveSecondaryLines() { secondaryDisplay.Reserve(7); }
 
 
 Collector::Collector()
@@ -30,7 +30,8 @@ Collector::Collector()
 	prepTimer = new Timer();
 	
 	//strike1 = new Relay(RAMP_LEFT_SPIKE_RELAY);
-	strike2 = new Relay(RAMP_RIGHT_SPIKE_RELAY);
+	rampVictor = new Victor(RAMP_VICTOR_CHANNEL);
+	rampStrike = new Relay(RAMP_SPIKE_RELAY);
 	
 	collectorTask = new Task("2502Cl",(FUNCPTR)ThreadLoop);
 }
@@ -47,7 +48,8 @@ Collector::~Collector()
 	delete middleIR;
 	delete topIR;
 	//delete strike1;
-	delete strike2;
+	delete rampStrike;
+	delete rampVictor;
 	delete prepTimer;
 }
 
@@ -92,30 +94,28 @@ void Collector::ManipulateRamp(RampState state)
 	{
 		grabber->Set(COLLECTOR_STOP);
 		lifter->Set(COLLECTOR_STOP);
-		/*
-		if ( counter % 3 == 0 )
+		if (state == UP)
 		{
-		*/
-			if (state == UP)
-			{
-				//strike1->Set(Relay::kForward);
-				strike2->Set(Relay::kReverse);
-			}
-			else if (state == DOWN)
-			{
-				//strike1->Set(Relay::kReverse);
-				strike2->Set(Relay::kForward);
-			}
-		//}
+			//strike1->Set(Relay::kForward);
+			rampStrike->Set(Relay::kReverse);
+			rampVictor->Set(-1.0f);
+		}
+		else if (state == DOWN)
+		{
+			//strike1->Set(Relay::kReverse);
+			rampStrike->Set(Relay::kForward);
+			rampVictor->Set(1.0f);
+		}
 		else
 		{
 			//strike1->Set(Relay::kOff);
-			strike2->Set(Relay::kOff);
+			rampStrike->Set(Relay::kOff);
+			rampVictor->Set(0.0f);
 			collectorState = LOOKING_FOR_BALLS;
 		}
 	}
 	else
-		strike2->Set(Relay::kOff);
+		rampStrike->Set(Relay::kOff);
 }
 
 
@@ -160,19 +160,16 @@ void Collector::RejectBall()
 void Collector::ThreadLoop()
 {
 	Timer stage1Timer;
-	int numStage2 = 0;
-	int numStage1 = 0;
-	int numLooking = 0;
 	int lastStage = 0;
 	while( true )
 	{
-		COLLECTOR.primaryDisplay.printfLine(0, "Balls:%d", balls);
+		COLLECTOR.primaryDisplay.PrintfLine(0, "Balls:%d", balls);
 
-		COLLECTOR.secondaryDisplay.printfLine(0, "TopIR:%f", topIR->GetVoltage());
-		COLLECTOR.secondaryDisplay.printfLine(1, "Stage:%d", (int)collectorState);
-		COLLECTOR.secondaryDisplay.printfLine(2, "FrontIR:%f", frontIR->GetVoltage());
-		COLLECTOR.secondaryDisplay.printfLine(3, "FrMiddleIR:%f", frontMiddleIR->GetVoltage());
-		COLLECTOR.secondaryDisplay.printfLine(4, "MiddleIR:%f", middleIR->GetVoltage());
+		COLLECTOR.secondaryDisplay.PrintfLine(0, "TopIR:%f", topIR->GetVoltage());
+		COLLECTOR.secondaryDisplay.PrintfLine(1, "Stage:%d", (int)collectorState);
+		COLLECTOR.secondaryDisplay.PrintfLine(2, "FrontIR:%f", frontIR->GetVoltage());
+		COLLECTOR.secondaryDisplay.PrintfLine(3, "FrMiddleIR:%f", frontMiddleIR->GetVoltage());
+		COLLECTOR.secondaryDisplay.PrintfLine(4, "MiddleIR:%f", middleIR->GetVoltage());
 		
 		switch( collectorState )
 		{
@@ -190,11 +187,10 @@ void Collector::ThreadLoop()
 			{
 				if( balls < MAX_BALLS )
 				{
-					COLLECTOR.secondaryDisplay.printfLine(5, "SWITCH:%f", frontIR->GetVoltage());
+					COLLECTOR.secondaryDisplay.PrintfLine(5, "SWITCH:%f", frontIR->GetVoltage());
 					stage1Timer.Reset();
 					stage1Timer.Start();
 					collectorState = STAGE1;
-					numLooking++;
 				}
 				else
 				{
@@ -220,7 +216,6 @@ void Collector::ThreadLoop()
 					// probably want to run this one slowly because we want to stop as soon as the IR sensor no longer senses the ball
 					grabber->Set(COLLECTOR_RUNSLOW);
 					lifter->Set(COLLECTOR_RUNSLOW);
-					numStage1++;
 					collectorState = STAGE2;
 				}
 			}
@@ -240,7 +235,6 @@ void Collector::ThreadLoop()
 				// the middle sensor no longer senses a ball? time to stop and wait for another ball to show up
 				if( middleIR->Get() == BALL_NOT_VISIBLE )
 				{
-					numStage2++;
 					Wait(.1);
 					grabber->Set(COLLECTOR_STOP);
 					lifter->Set(COLLECTOR_STOP);
@@ -283,14 +277,17 @@ void Collector::ThreadLoop()
 			{
 				Wait(0.001);
 				if( topIR->Get() == BALL_NOT_VISIBLE )
+				{
 					break;
+				}
 			}
 			
-			Wait(0.1);
+			Wait(0.250);
 			
 			grabber->Set(COLLECTOR_STOP);
 			lifter->Set(COLLECTOR_STOP);
-			if (balls >= 1) {
+			if (balls >= 1) 
+			{
 				balls--;
 			}
 			collectorState = LOOKING_FOR_BALLS;
@@ -307,8 +304,9 @@ void Collector::ThreadLoop()
 			break;
 		}
 
-		if (lastStage != collectorState) {
-			COLLECTOR.secondaryDisplay.printfLine(6, "Collector: %d to %d\n", lastStage, collectorState);
+		if (lastStage != collectorState) 
+		{
+			COLLECTOR.secondaryDisplay.PrintfLine(6, "Collector: %d to %d\n", lastStage, collectorState);
 			lastStage = collectorState;
 		}
 	}	
@@ -317,7 +315,8 @@ void Collector::ThreadLoop()
 void Collector::ChangeBallCountBy(int c)
 {
 	int tmpBalls = balls + c;
-	if (tmpBalls < 0) {
+	if (tmpBalls < 0) 
+	{
 		tmpBalls = 0;
 	}
 	if (tmpBalls > (int)MAX_BALLS) {

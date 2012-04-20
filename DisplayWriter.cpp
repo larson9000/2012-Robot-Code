@@ -14,7 +14,7 @@ DisplayWriter::~DisplayWriter()
 {
 }
 
-void DisplayWriter::clear()
+void DisplayWriter::Clear()
 {
 	if (reservedSize <= 0)
 		return;
@@ -26,7 +26,7 @@ void DisplayWriter::clear()
 	}
 }
 
-void DisplayWriter::reserve(int size)
+void DisplayWriter::Reserve(int size)
 {
 	if (reservedSize == 0)	// do not allow re-reserving ... ignore such requests
 	{
@@ -35,7 +35,7 @@ void DisplayWriter::reserve(int size)
 	}
 }
 
-int DisplayWriter::printf(const char* format, ...)
+int DisplayWriter::Printf(const char* format, ...)
 {
 	if (reservedSize <= 0)
 		return 0;
@@ -54,7 +54,7 @@ int DisplayWriter::printf(const char* format, ...)
 	return retlen;
 }
 
-int DisplayWriter::printfLine(int line, const char* format, ...)
+int DisplayWriter::PrintfLine(int line, const char* format, ...)
 {
 	if (reservedSize <= 0)
 		return 0;
@@ -68,7 +68,7 @@ int DisplayWriter::printfLine(int line, const char* format, ...)
 	if (line < reservedSize)
 		DisplayWrapper::GetInstance()->puts(startingLine + line, buf);
 	else
-		printf("DisplayWriter line exceeds reservation: %s\n", buf);
+		Printf("DisplayWriter line exceeds reservation: %s\n", buf);
 
 	return retlen;
 }

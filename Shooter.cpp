@@ -7,45 +7,19 @@
 #include "DisplayWriter.h"
 #include "DisplayWrapper.h"
 
-void Shooter::reservePrimaryLines() { primaryDisplay.reserve(0); }
-void Shooter::reserveSecondaryLines() { secondaryDisplay.reserve(3); }
-
-
-/**
- * Find the perfect speed to shoot the ball into a basket.
- * 
- * \note all units are in FEET.
- * \param distance the distance to the target.
- * \param elevation the height of the target relative to the shooter.
- * \param shootAngle the angle that the ball is being shot at.
- * \param basketRadius the radius of the basket.
- * \param ballRadius the radius of the ball.
- * \return the velocity that the ball should be shot at (in ft/s).
- */
-static double GetShootVelocity(double distance, double elevation, double shootAngle, double basketRadius, double ballRadius)
-{
-	static double rootG = sqrt(32.0);
-	static double sinAngle = sin(2 * shootAngle);
-	static double cosAngle = cos(2 * shootAngle);
-	static double tanAngle = tan(shootAngle);
-	//double impactAngle = atan( tan(shootAngle) - (2 * elevation) / distance);
-	double impactAngle = atan( tanAngle - 2 * elevation / distance );
-	double variance = basketRadius - (ballRadius / sin(impactAngle));
-	//double velocity = sqrt( (g * pow(distance + variance, 2.0)) / (2.0 * (distance + variance) * sin(shootAngle) * cos(shootAngle) - elevation * pow(cos(shootAngle) , 2.0) ) );
-	return rootG * fabs(distance + variance)/ sqrt(fabs(cosAngle*elevation+elevation-sinAngle*distance-variance*sinAngle));
-}
+void Shooter::reservePrimaryLines() { primaryDisplay.Reserve(1); }
+void Shooter::reserveSecondaryLines() { secondaryDisplay.Reserve(3); }
 
 Shooter::Shooter() :
 		turretDirection(0.0),
-		topRatio(.104)
+		topRatio(1.0),
+		turretRatio(0.607)
 {
 	Singleton<Logger>::GetInstance().Logf("Shooter: Starting up...");
 	//Setup Jaguars
 	topJag = new Jaguar(DIGITAL_SIDECAR_SLOT, SHOOTER_TOP_JAG_CHANNEL);
 	bottomJag = new Jaguar(DIGITAL_SIDECAR_SLOT, SHOOTER_BOTTOM_JAG_CHANNEL);
 	turretVictor = new Victor(TURRET_CHANNEL);
-//	turretIR = new SharpIR( 1, IR_TURRET_CHANNEL, TURRET_SIGNAL_VOLTAGE );
-//	turretPosition = 0;
 	topEncoder = new SingleChannelEncoder(SHOOTER_TOP_ENCODER_A, *topJag );
 	bottomEncoder = new SingleChannelEncoder(SHOOTER_BOTTOM_ENCODER_A, *bottomJag);
 	turretEncoder = new Encoder(TURRET_ENCODER_A, TURRET_ENCODER_B);
@@ -105,9 +79,9 @@ void Shooter::Shoot(double speed , Joystick* joystick, int shots )
 			    count++;
 		    else
 			    count = 0;
-		    SHOOTER.secondaryDisplay.printfLine(0, "TopRate:%.3f", SHOOTER.topEncoder->GetRate());
-		    SHOOTER.secondaryDisplay.printfLine(1, "BotRate:%.3f", SHOOTER.bottomEncoder->GetRate());
-			DisplayWrapper::GetInstance()->output();
+		    SHOOTER.secondaryDisplay.PrintfLine(0, "TopRate:%.3f", SHOOTER.topEncoder->GetRate());
+		    SHOOTER.secondaryDisplay.PrintfLine(1, "BotRate:%.3f", SHOOTER.bottomEncoder->GetRate());
+			DisplayWrapper::GetInstance()->Output();
 		    Wait(0.01);
 		    limiter++;
 	    }
@@ -131,6 +105,8 @@ void Shooter::Shoot(double speed , Joystick* joystick, int shots )
 
 void Shooter::ShootBasket(double distance, Joystick* joystick, int shots )
 {
+	if(distance < 1.0) //If bad data, default to key.
+		distance = 16.0;
 	double spin = 1.827142857E-2*distance - 0.19;
 	SetTopRatio(spin);
 	
@@ -162,8 +138,14 @@ void Shooter::SetTopRatio(double ratio)
 void Shooter::SetTurret(double direction)
 {
 	turretDirection = direction;
-	this->turretVictor->Set( -1.0 * direction );
-	SHOOTER.secondaryDisplay.printfLine(2, "T:%f", direction);
+	this->turretVictor->Set( -1.0 * turretRatio * direction );
+	SHOOTER.secondaryDisplay.PrintfLine(2, "T:%f", direction);
+}
+
+void Shooter::SetTurretRatio(double ratio)
+{
+	turretRatio = ratio;
+	primaryDisplay.PrintfLine(0, "R:%f", turretRatio);
 }
 
 void Shooter::Update()
@@ -172,8 +154,8 @@ void Shooter::Update()
 	if( (rotation < -90 && turretDirection < 0)  || (rotation > 90 && turretDirection > 0) )
 		SetTurret(0);
 	
-	//topEncoder->PIDGet();
-	//bottomEncoder->PIDGet();
-    SHOOTER.secondaryDisplay.printfLine(0, "TopRate:%.3f", SHOOTER.topEncoder->GetRate());
-    SHOOTER.secondaryDisplay.printfLine(1, "BotRate:%.3f", SHOOTER.bottomEncoder->GetRate());
+	topEncoder->PIDGet();
+	bottomEncoder->PIDGet();
+    SHOOTER.secondaryDisplay.PrintfLine(0, "TopRate:%.3f", SHOOTER.topEncoder->GetRate());
+    SHOOTER.secondaryDisplay.PrintfLine(1, "BotRate:%.3f", SHOOTER.bottomEncoder->GetRate());
 }

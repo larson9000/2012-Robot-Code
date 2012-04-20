@@ -6,7 +6,8 @@
 #include "SharpIR.h"
 #include "DisplayWriter.h"
 
-enum CollectorState {
+enum CollectorState 
+{
 	OFF,
 	LOOKING_FOR_BALLS,
 	STAGE1,
@@ -16,7 +17,8 @@ enum CollectorState {
 	EJECTING
 };
 
-enum RampState {
+enum RampState 
+{
 	RAMP_OFF,
 	UP,
 	DOWN
@@ -54,7 +56,8 @@ private:
 	static SharpIR *topIR;
 	Task *collectorTask;
 	//Relay *strike1;
-	Relay *strike2;
+	Victor* rampVictor;
+	Relay *rampStrike;
 	static CollectorState collectorState;
 	static Timer* prepTimer;
 	static void ThreadLoop();

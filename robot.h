@@ -43,13 +43,14 @@ private:
 	void ShootBasketTeleoperated();
 	void MoveTurret();
 	void TurretOff();
-	void HalfSpeedOn();
-	void QuarterSpeedOn();
+	void MediumSpeedOn();
+	void SlowSpeedOn();
 	void NormalSpeed();
 	void RatioDown();
 	void RatioUp();
 	void CollectorIncBall();
 	void CollectorDecBall();
+	void forceDriveOn();
 
 	double shotDirectionModifier();
 	double shotDistanceModifier();
@@ -60,6 +61,8 @@ private:
 
 	void reservePrimaryLines();
 	void reserveSecondaryLines();
+	
+	static void OperatorControlLoop();
 	
 	DisplayWriter primaryDisplay;
 	DisplayWriter secondaryDisplay;
@@ -74,6 +77,9 @@ private:
 	double 						speedMultiplier;
 	int							shotModifierX;
 	int							shotModifierZ;
+	static bool					operatorControlEnabled;
+	Task*						operatorControlTask;
+	static Robot*				me;
 };
 
 #endif // ROBOT_H

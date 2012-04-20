@@ -26,12 +26,12 @@ public:
 	 * Set the scroll location of the buffer to display.
 	 * 0.0 is the top and 1.0 is the bottom.
 	 */
-	void setScrollLocation(float location);
+	void SetScrollLocation(float location);
 	
 	/**
 	 * Send changes to the display
 	 */
-	void output();
+	void Output();
 	
 	/****************************************************************************/
 	// Only the DisplayWriter should be using the following methods
